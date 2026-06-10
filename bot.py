@@ -26,7 +26,7 @@ else:
 
 # ——— CHANNELS ———
 CHANNELS = [
-    "https://t.me/+ktX-TUUVs5YxYzdl",
+   
     "https://t.me/+IzPzNVO1kGo2NDc0"
 ]
 
