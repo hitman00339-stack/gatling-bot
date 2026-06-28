@@ -88,7 +88,7 @@ def load_numbers_to_memory():
                     formatted = "+91" + line
                     if validate_number(formatted):
                         numbers.append(formatted)
-                        if len(numbers) >= 1200:
+                        if len(numbers) >= 3000:
                             break
             PRELOADED_NUMBERS = numbers
             print(f"✅ Pre-loaded {len(PRELOADED_NUMBERS)} numbers from ENV variable.")
