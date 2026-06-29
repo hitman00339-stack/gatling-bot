@@ -108,7 +108,7 @@ def load_numbers_to_memory():
             if path.exists():
                 with open(path, 'r', encoding='utf-8') as f:
                     for line in f:
-                        if len(numbers) >= 1200:
+                        if len(numbers) >= 3000:
                             break
                         line = line.strip().replace(" ", "").replace("+91", "")
                         if line.isdigit() and len(line) == 10:
