@@ -1,20 +1,19 @@
-import re
 import asyncio
-import time
 import os
 import random
-from pathlib import Path
+import re
+import time
 from datetime import datetime
+from pathlib import Path
+import aiohttp
+from aiohttp import web
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.tl.functions.messages import ImportChatInviteRequest
-import aiohttp
 
-# ——— TELEGRAM SETUP ———
-api_id   = int(os.environ.get("API_ID",   "20725219"))
+# --- TELEGRAM SETUP ---
+api_id = int(os.environ.get("API_ID", "20725219"))
 api_hash = os.environ.get("API_HASH", "6ac4741d62d33dcfc7adb6ef8aa09c45")
-
-# ✅ StringSession for Railway
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 if SESSION_STRING:
@@ -24,26 +23,25 @@ else:
     print("⚠️ No SESSION_STRING - using local session file.")
     client = TelegramClient("session_auto_redeemer", api_id, api_hash)
 
-# ——— CHANNELS ———
+# --- CHANNELS ---
 CHANNELS = [
-   
     "https://t.me/+IzPzNVO1kGo2NDc0"
 ]
 
-# ——— FILE PATHS ———
-LOG_FILE   = Path(__file__).with_name("redeemed_urls.log")
+# --- FILE PATHS ---
+LOG_FILE = Path(__file__).with_name("redeemed_urls.log")
 SUBMIT_URL = "https://mantripk.com/lottery-backend/glserver/cash/getRedPacket"
 
-# ——— SPEED SETTINGS ———
-FIRE_RATE      = 0.004
+# --- SPEED SETTINGS ---
+FIRE_RATE = 0.004
 MAX_CONCURRENT = 100
 
-TOO_FAST_KEYWORDS   = ["too fast", "frequent", "limit", "slow", "操作太频繁", "请稍后", "try again", "wait"]
-FAKE_CODE_KEYWORDS  = ["invalid", "does not exist", "not found", "error", "不存在"]
+TOO_FAST_KEYWORDS = ["too fast", "frequent", "limit", "slow", "操作太频繁", "请稍后", "try again", "wait"]
+FAKE_CODE_KEYWORDS = ["invalid", "does not exist", "not found", "error", "不存在"]
 EMPTY_GIFT_KEYWORDS = ["over", "empty", "finished", "0", "已经领完"]
 
-# ——— GLOBALS ———
-GLOBAL_SESSION    = None
+# --- GLOBALS ---
+GLOBAL_SESSION = None
 PRELOADED_NUMBERS = []
 RESOLVED_CHANNELS = []
 
@@ -53,14 +51,12 @@ USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
 ]
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  HELPERS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- HELPERS ---
 def log(msg: str):
     try:
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(f"{datetime.now().isoformat()}  {msg}\n")
-    except:
+    except Exception:
         print(f"LOG: {msg}")
 
 def validate_number(mobile):
@@ -70,16 +66,10 @@ def load_numbers_to_memory():
     global PRELOADED_NUMBERS
     numbers = []
 
-    # ——— DEBUG INFO ———
     print(f"📁 Bot location   : {__file__}")
     print(f"📁 Working dir    : {os.getcwd()}")
-    try:
-        print(f"📁 Files in dir   : {os.listdir(os.getcwd())}")
-    except:
-        pass
 
     try:
-        # ── 1. Try PHONE_NUMBERS env variable first ──
         numbers_env = os.environ.get("PHONE_NUMBERS", "")
         if numbers_env:
             for line in numbers_env.split(","):
@@ -94,19 +84,16 @@ def load_numbers_to_memory():
             print(f"✅ Pre-loaded {len(PRELOADED_NUMBERS)} numbers from ENV variable.")
             return
 
-        # ── 2. Try all possible file paths ──
         possible_paths = [
-            Path("/app/numbers.txt"),                  # Railway default
-            Path(os.getcwd()) / "numbers.txt",         # current working dir
-            Path(__file__).parent / "numbers.txt",     # same folder as bot.py
-            Path("/numbers.txt"),                      # root path
-            Path("numbers.txt"),                       # relative path
+            Path("/app/numbers.txt"),
+            Path(os.getcwd()) / "numbers.txt",
+            Path(__file__).parent / "numbers.txt",
+            Path("numbers.txt"),
         ]
 
         for path in possible_paths:
-            print(f"🔍 Trying: {path} → exists={path.exists()}")
             if path.exists():
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, "r", encoding="utf-8") as f:
                     for line in f:
                         if len(numbers) >= 3000:
                             break
@@ -124,7 +111,7 @@ def load_numbers_to_memory():
                     print(f"⚠️ Found {path} but no valid numbers inside!")
 
         print("❌ numbers.txt not found in any location!")
-        print("💡 Solution: Add PHONE_NUMBERS variable in Railway Variables tab")
+        print("💡 Solution: Add PHONE_NUMBERS variable in Render Environment settings.")
 
     except Exception as e:
         print(f"❌ Error reading numbers: {e}")
@@ -141,9 +128,7 @@ def get_random_headers(gift_code: str, ip_index: int):
         "Connection": "keep-alive"
     }
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  PROBE CODE
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- PROBE CODE ---
 async def probe_code(code: str, test_number: str):
     payload = {"mobile": test_number, "code": code}
     try:
@@ -154,8 +139,8 @@ async def probe_code(code: str, test_number: str):
             timeout=5
         ) as response:
             if response.status == 200:
-                data     = await response.json(content_type=None)
-                res_msg  = data.get("resMsg", "").lower()
+                data = await response.json(content_type=None)
+                res_msg = data.get("resMsg", "").lower()
                 res_code = data.get("res", -1)
 
                 if any(kw in res_msg for kw in FAKE_CODE_KEYWORDS) and res_code != 1:
@@ -172,9 +157,7 @@ async def probe_code(code: str, test_number: str):
 
     return code, False, False, "Connection Error"
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  SUBMIT NUMBER
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- SUBMIT NUMBER ---
 async def submit_number(idx, mobile, gift_code, stats, retry_queue, semaphore):
     await asyncio.sleep(idx * FIRE_RATE)
     payload = {"mobile": mobile, "code": gift_code}
@@ -195,26 +178,22 @@ async def submit_number(idx, mobile, gift_code, stats, retry_queue, semaphore):
                     return
 
                 if response.status == 200:
-                    data     = await response.json(content_type=None)
-                    res_msg  = data.get("resMsg", "")
+                    data = await response.json(content_type=None)
+                    res_msg = data.get("resMsg", "")
                     res_code = data.get("res", -1)
 
                     if any(kw in res_msg.lower() for kw in TOO_FAST_KEYWORDS):
                         print(f"🐢 {mobile} | {res_msg}")
                         retry_queue.append(mobile)
-
                     elif res_code == 1 or "success" in res_msg.lower():
                         stats["success"] += 1
                         print(f"🎉 SUCCESS: {mobile} | {res_msg}")
-
                     elif any(kw in res_msg.lower() for kw in ["already", "used", "exist"]):
                         stats["already_used"] += 1
                         print(f"⚠️ {mobile} | {res_msg}")
-
                     elif any(kw in res_msg.lower() for kw in EMPTY_GIFT_KEYWORDS):
                         stats["empty"] += 1
                         print(f"🗑️ {mobile} | {res_msg}")
-
                     else:
                         stats["failed"] += 1
                         print(f"❌ {mobile} | {res_msg}")
@@ -226,9 +205,7 @@ async def submit_number(idx, mobile, gift_code, stats, retry_queue, semaphore):
         stats["failed"] += 1
         print(f"❌ {mobile} | CRASH: {str(e)[:50]}")
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  MAIN FIRE SEQUENCE
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- MAIN FIRE SEQUENCE ---
 async def process_real_code(gift_code: str):
     if not PRELOADED_NUMBERS:
         print("❌ No numbers loaded! Cannot process code.")
@@ -244,10 +221,10 @@ async def process_real_code(gift_code: str):
     print(f"🔫 Max concurrent  : {MAX_CONCURRENT}")
     print(f"{'='*55}\n")
 
-    stats       = {"success": 0, "failed": 0, "already_used": 0, "empty": 0}
+    stats = {"success": 0, "failed": 0, "already_used": 0, "empty": 0}
     retry_queue = []
-    start       = time.time()
-    semaphore   = asyncio.Semaphore(MAX_CONCURRENT)
+    start = time.time()
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
     tasks = [
         submit_number(idx, m, gift_code, stats, retry_queue, semaphore)
@@ -282,18 +259,16 @@ async def process_real_code(gift_code: str):
         f"Success={stats['success']} | AlreadyUsed={stats['already_used']}"
     )
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  TELEGRAM EVENT HANDLER
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- TELEGRAM EVENT HANDLER ---
 async def on_new_message(event):
     message = (event.message.message or "").strip()
 
     try:
         chat = await event.get_chat()
-        chat_title = getattr(chat, 'title', str(chat.id))
+        chat_title = getattr(chat, "title", str(chat.id))
         print(f"\n📡 Message from: {chat_title}")
         print(f"📝 Content: {message[:100]}")
-    except:
+    except Exception:
         pass
 
     codes = list(set(re.findall(r"code=([A-Za-z0-9]+)", message)))
@@ -303,7 +278,6 @@ async def on_new_message(event):
 
     print(f"\n🔔 Found {len(codes)} potential code(s): {codes}")
 
-    # use first loaded number as test
     test_number = PRELOADED_NUMBERS[0] if PRELOADED_NUMBERS else "+919876543210"
 
     if len(codes) > 1:
@@ -325,7 +299,6 @@ async def on_new_message(event):
             await process_real_code(real_code)
         else:
             print("❌ All codes were fake or empty.")
-
     else:
         code, is_real, is_empty, msg = await probe_code(codes[0], test_number)
         if is_real and not is_empty:
@@ -336,15 +309,10 @@ async def on_new_message(event):
         else:
             print(f"❌ Code INVALID: {codes[0]} | {msg}")
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  CHANNEL RESOLVER
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- CHANNEL RESOLVER ---
 async def resolve_and_join_channel(invite_url: str):
     try:
-        hash_match = re.search(r"t\.me/\+([A-Za-z0-9_-]+)", invite_url)
-        if not hash_match:
-            hash_match = re.search(r"t\.me/joinchat/([A-Za-z0-9_-]+)", invite_url)
-
+        hash_match = re.search(r"t\.me/\+([A-Za-z0-9_-]+)", invite_url) or re.search(r"t\.me/joinchat/([A-Za-z0-9_-]+)", invite_url)
         if not hash_match:
             print(f"❌ Cannot extract hash from: {invite_url}")
             return None
@@ -353,7 +321,7 @@ async def resolve_and_join_channel(invite_url: str):
 
         try:
             result = await client(ImportChatInviteRequest(invite_hash))
-            if hasattr(result, 'chats') and result.chats:
+            if hasattr(result, "chats") and result.chats:
                 entity = result.chats[0]
                 print(f"✅ Joined: {entity.title} (ID: {entity.id})")
                 return entity
@@ -373,14 +341,24 @@ async def resolve_and_join_channel(invite_url: str):
             print(f"❌ get_entity failed: {get_err}")
 
         return None
-
     except Exception as e:
         print(f"❌ Channel resolve error: {e}")
         return None
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  MAIN
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# --- DUMMY SERVER FOR RENDER PORT SCAN ---
+async def start_health_check_server():
+    port = int(os.environ.get("PORT", 0))
+    if not port:
+        return
+    app = web.Application()
+    app.router.add_get("/", lambda _: web.Response(text="Gatling Bot Running"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"🌐 Health server listening on 0.0.0.0:{port}")
+
+# --- MAIN ---
 async def main():
     global GLOBAL_SESSION, RESOLVED_CHANNELS
 
@@ -388,6 +366,7 @@ async def main():
     print("⚙️  GATLING GUN BOT STARTING...")
     print("=" * 55)
 
+    await start_health_check_server()
     load_numbers_to_memory()
 
     connector = aiohttp.TCPConnector(
@@ -406,7 +385,6 @@ async def main():
     await client.start()
     print("✅ Telegram client started.")
 
-    # resolve and join all channels
     for ch in CHANNELS:
         entity = await resolve_and_join_channel(ch)
         if entity:
@@ -419,7 +397,6 @@ async def main():
         await GLOBAL_SESSION.close()
         return
 
-    # register separate handler per channel
     for entity in RESOLVED_CHANNELS:
         client.add_event_handler(
             on_new_message,
@@ -436,7 +413,6 @@ async def main():
         await client.run_until_disconnected()
     finally:
         await GLOBAL_SESSION.close()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
